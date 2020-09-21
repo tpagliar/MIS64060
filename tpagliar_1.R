@@ -1,6 +1,6 @@
 #Tim Pagliari (tpagliar@kent.edu) submission for Assignment 1 in MIS-64060-002-202080.
 #The CScoreCard dataset is the Most Recent Institution Level Data from the Department of Education's College Scorecard. Retrieved from: https://collegescorecard.ed.gov/data/; I've removed some of the later columns as the original file is greater than 100MB and I didn't try to push it until i had completed the assignment.
-CScoreCard <- read.csv("~/GIT/64060-tpagliar/CScoreCard.csv")
+CScoreCard <- read.csv("~/GIT/MIS64060-tpagliar/CScoreCard.csv")
 #The MaxDegree variable is categorical and references the highest degree level awarded by the institution.
 # first, I'll count the number of rows (or number of institutions present)
 var_MaxDegree <- CScoreCard$HIGHDEG
