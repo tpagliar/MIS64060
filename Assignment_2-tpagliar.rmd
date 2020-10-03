@@ -1,0 +1,161 @@
+---
+title: "Assignment2-Pagliari"
+author: "Tim Pagliari tpagliar@kent.edu"
+date: "10/1/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+  html_notebook:
+    highlight: textmate
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}```
+##Assignment 2 for Tim Pagliari
+First, we'll install the libraries used in this project:
+```{r}
+library(caret)
+library(class)
+library(ISLR)
+library(dplyr)
+library(ggplot2)
+library(fastDummies)
+```
+
+Now I'll load the UniversalBank.csv file which contains customer information and convert the categorical data to factors.
+```{r}
+BankData <- read.csv("~/GIT/MIS64060-tpagliar/UniversalBank.csv")
+BankData$Personal.Loan<-factor(BankData$Personal.Loan,levels=c('0','1'),labels=c('No','Yes'))
+#BankData$ZIP.Code<-as.factor(BankData$ZIP.Code)
+#BankData$Family<-as.factor(BankData$Family)
+#BankData$Online<-factor(BankData$Online,levels=c('0','1'),labels=c('No','Yes'))
+#BankData$CD.Account<-factor(BankData$CD.Account,levels=c('0','1'),labels=c('No','Yes'))
+#BankData$CreditCard<-factor(BankData$CreditCard,levels=c('0','1'),labels=c('No','Yes'))
+#BankData$Securities.Account<-factor(BankData$Securities.Account,levels=c('0','1'), labels=c('No','Yes'))
+summary(BankData)
+```
+
+##Data Selection
+Now we should select our relevant data, (in this case, all but ID and Zip - we'll also convert Education into 3 dummy variables for each education level) and divide the set into training (60%) and validation (40%) sets.
+```{r}
+library(dplyr)
+
+dummy_bankdata <- dummy_columns(BankData, select_columns = 'Education')
+m_bankdata <- select(dummy_bankdata,Age,Experience,Income,Family,CCAvg,Education_1,Education_2,Education_3,Mortgage,Personal.Loan,Securities.Account,CD.Account,Online,CreditCard)
+#m_bankdata$Education_1<-factor(m_bankdata$Education_1,levels=c('0','1'),labels=c('No','Yes'))
+#m_bankdata$Education_2<-factor(m_bankdata$Education_2,levels=c('0','1'),labels=c('No','Yes'))
+#m_bankdata$Education_3<-factor(m_bankdata$Education_3,levels=c('0','1'),labels=c('No','Yes'))
+m_bankdata <- m_bankdata %>% relocate(Personal.Loan,.after=last_col())#move personal.loan to the end to make our lives easier later on.
+set.seed(123)
+Train_Index=createDataPartition(m_bankdata$Personal.Loan,p=0.60, list=FALSE) # Partition 60% of data for training.
+Train_Data = m_bankdata[Train_Index,]
+Validation_Data = m_bankdata[-Train_Index,]
+
+summary(Train_Data)
+summary(Validation_Data)
+```
+
+## Now we'll move to normalize the numeric data.
+
+```{r}
+columnsare <-c(1,2,3,4,5,9)
+train.norm.df <- Train_Data
+valid.norm.df <- Validation_Data
+norm.values <- preProcess(Train_Data[,columnsare], method=c("center","scale"))
+
+train.norm.df[, columnsare] <-predict(norm.values,Train_Data[,columnsare])
+valid.norm.df[, columnsare] <-predict(norm.values,Validation_Data[,columnsare])
+
+head(train.norm.df)
+head(valid.norm.df)
+```
+
+## Building the K-NN model
+
+```{r}
+
+train.knn.predictors <- train.norm.df[, 1:13]
+train.knn.success <-train.norm.df[,14]
+valid.knn.predictors <- valid.norm.df[, 1:13]
+valid.knn.success <-valid.norm.df[,14]
+set.seed(321)
+WithK1 <- knn (train=train.knn.predictors, test=valid.knn.predictors, cl=train.knn.success, k=1, prob=TRUE)
+confusionMatrix(WithK1,valid.knn.success,"Yes")
+```
+We see that the model has an accuracy of .977
+
+## A sample customer
+Now let's take a sample customer with the following characteristics: 
+Age = 40,
+Experience = 10,
+Income = 84, 
+Family = 2, 
+CCAvg = 2, 
+Education_1 = 0, 
+Education_2 = 1,
+Education_3 = 0, 
+Mortgage = 0, 
+Securities Account = 0, 
+CD Account = 0, 
+Online = 1, 
+and Credit Card = 1. 
+
+We'll evaluate him with our model.
+
+```{r}
+customertest <- Validation_Data[1,] #input and correct value types
+customertest$Age <- as.integer(40)
+customertest$Experience <- as.integer(40)
+customertest$Income <- as.integer(40)
+#customertest$Family <- as.factor("2")
+customertest$Family <- as.integer(2)
+customertest$CCAvg <- as.double(2)
+customertest$Education_1 <- as.integer(0)
+customertest$Education_2 <- as.integer(1)
+customertest$Education_3 <- as.integer(0)
+customertest$Mortgage <- as.integer(0)
+customertest$Securities.Account <- as.integer(0)
+customertest$CD.Account <- as.integer(0)
+customertest$Online <- as.integer(1)
+customertest$Personal.Loan <- as.factor("N/A")
+customertest$CreditCard <- as.integer(1)
+customer.norm.df <- customertest
+customer.norm.df[, columnsare]<-predict(norm.values,customertest[,columnsare])#normalize the numeric values
+```
+Now that we've imported and normalized the customer's data, we will test him against our K-NN from earlier.
+
+```{r}
+customer.knn.predictors <-customer.norm.df[,1:13]
+customer.knn.result <- knn (train=train.knn.predictors, test=customer.knn.predictors, cl=train.knn.success, k=1, prob=TRUE)
+dim(customer.knn.result)
+```
+We see that the model predicts this customer would not qualify for a personal loan.
+
+##Tuning using Validation
+We will now test the performance of our model across various k's on our validation set.
+```{r}
+#accuracy.df <- data.frame(k = seq(1,14,1), accuracy = rep(0 , 14))
+
+#for(i in 1:14){
+#  knn.pred <- knn(train.norm.df[,columnsare],valid.norm.df[,columnsare], #cl=train.norm.df[,10],k=i)
+#  accuracy.df[i,2] <- confusionMatrix(knn.pred,valid.norm.df[,10])$overall
+#}
+#accuracy.df
+```
+
+##Part 2
+Now we do part 2 - a training, validation, and test set of 50,30,20% respectively.
+###```{r}
+Test_Index = createDataPartition(m_bankdata$Sales,p=0.2, list=FALSE) # 20% reserved for Test
+Test_Data = m_carseats[Test_Index,]
+TraVal_Data = m_carseats[-Test_Index,] # Validation and Training data is rest
+
+Train_Index = createDataPartition(TraVal_Data$Sales,p=0.75, list=FALSE) # 75% of remaining data as training
+Train_Data = TraVal_Data[Train_Index,]
+Validation_Data = TraVal_Data[-Train_Index,] # rest as validation
+
+summary(Train_Data)
+summary(Validation_Data)
+summary(Test_Data)
+```
