@@ -12,7 +12,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}```
-##Assignment 2 for Tim Pagliari
+## Assignment 2 for Tim Pagliari
 First, we'll include the libraries used in this project:
 ```{r}
 library(caret)
@@ -30,7 +30,7 @@ BankData$Personal.Loan<-factor(BankData$Personal.Loan,levels=c('0','1'),labels=c
 summary(BankData)
 ```
 
-##Data Selection
+## Data Selection
 Now we should select our relevant data, (in this case, all but ID and Zip - we'll also convert Education into 3 dummy variables for each education level) and divide the set into training (60%) and validation (40%) sets.
 ```{r}
 library(dplyr)
@@ -108,7 +108,7 @@ head(customer.knn)
 ```
 We see that the model predicts this customer would not accept a loan.
 
-##Tuning using Validation
+## Tuning using Validation
 We will now test the performance of our model across various k's on our validation set so that we can discuss the balance for k.
 ```{r}
 library(FNN)
