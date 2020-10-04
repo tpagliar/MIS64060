@@ -1644,10 +1644,12 @@ summary {
 <li><a href="#now-well-move-to-normalize-the-numeric-data.">Now we’ll move to normalize the numeric data.</a></li>
 <li><a href="#building-the-k-nn-model">Building the K-NN model</a></li>
 <li><a href="#a-sample-customer">A sample customer</a></li>
+<li><a href="#further-examination-of-k-3">Further examination of k = 3</a></li>
+<li><a href="#repartitioning-for-a-test-set">Repartitioning for a test set</a></li>
 </ul>
 </div>
 
-<p><code>{r setup, include=FALSE}</code> ##Assignment 2 for Tim Pagliari First, we’ll install the libraries used in this project:</p>
+<p><code>{r setup, include=FALSE}</code> ##Assignment 2 for Tim Pagliari First, we’ll include the libraries used in this project:</p>
 <pre class="r"><code>library(caret)</code></pre>
 <pre><code>## Loading required package: lattice</code></pre>
 <pre><code>## Loading required package: ggplot2</code></pre>
@@ -1667,12 +1669,6 @@ library(fastDummies)</code></pre>
 <p>Now I’ll load the UniversalBank.csv file which contains customer information and convert the categorical data to factors.</p>
 <pre class="r"><code>BankData &lt;- read.csv(&quot;~/GIT/MIS64060-tpagliar/UniversalBank.csv&quot;)
 BankData$Personal.Loan&lt;-factor(BankData$Personal.Loan,levels=c(&#39;0&#39;,&#39;1&#39;),labels=c(&#39;No&#39;,&#39;Yes&#39;))
-#BankData$ZIP.Code&lt;-as.factor(BankData$ZIP.Code)
-#BankData$Family&lt;-as.factor(BankData$Family)
-#BankData$Online&lt;-factor(BankData$Online,levels=c(&#39;0&#39;,&#39;1&#39;),labels=c(&#39;No&#39;,&#39;Yes&#39;))
-#BankData$CD.Account&lt;-factor(BankData$CD.Account,levels=c(&#39;0&#39;,&#39;1&#39;),labels=c(&#39;No&#39;,&#39;Yes&#39;))
-#BankData$CreditCard&lt;-factor(BankData$CreditCard,levels=c(&#39;0&#39;,&#39;1&#39;),labels=c(&#39;No&#39;,&#39;Yes&#39;))
-#BankData$Securities.Account&lt;-factor(BankData$Securities.Account,levels=c(&#39;0&#39;,&#39;1&#39;), labels=c(&#39;No&#39;,&#39;Yes&#39;))
 summary(BankData)</code></pre>
 <pre><code>##        ID            Age          Experience       Income          ZIP.Code    
 ##  Min.   :   1   Min.   :23.00   Min.   :-3.0   Min.   :  8.00   Min.   : 9307  
@@ -1697,176 +1693,286 @@ summary(BankData)</code></pre>
 ##  Max.   :1.0000     Max.   :1.0000   Max.   :1.0000   Max.   :1.000</code></pre>
 <p>##Data Selection Now we should select our relevant data, (in this case, all but ID and Zip - we’ll also convert Education into 3 dummy variables for each education level) and divide the set into training (60%) and validation (40%) sets.</p>
 <pre class="r"><code>library(dplyr)
-
 dummy_bankdata &lt;- dummy_columns(BankData, select_columns = &#39;Education&#39;)
 m_bankdata &lt;- select(dummy_bankdata,Age,Experience,Income,Family,CCAvg,Education_1,Education_2,Education_3,Mortgage,Personal.Loan,Securities.Account,CD.Account,Online,CreditCard)
-#m_bankdata$Education_1&lt;-factor(m_bankdata$Education_1,levels=c(&#39;0&#39;,&#39;1&#39;),labels=c(&#39;No&#39;,&#39;Yes&#39;))
-#m_bankdata$Education_2&lt;-factor(m_bankdata$Education_2,levels=c(&#39;0&#39;,&#39;1&#39;),labels=c(&#39;No&#39;,&#39;Yes&#39;))
-#m_bankdata$Education_3&lt;-factor(m_bankdata$Education_3,levels=c(&#39;0&#39;,&#39;1&#39;),labels=c(&#39;No&#39;,&#39;Yes&#39;))
 m_bankdata &lt;- m_bankdata %&gt;% relocate(Personal.Loan,.after=last_col())#move personal.loan to the end to make our lives easier later on.
-set.seed(123)
-Train_Index=createDataPartition(m_bankdata$Personal.Loan,p=0.60, list=FALSE) # Partition 60% of data for training.
-Train_Data = m_bankdata[Train_Index,]
-Validation_Data = m_bankdata[-Train_Index,]
+set.seed(1)
+Train_Index &lt;- sample(row.names(m_bankdata), .6*dim(m_bankdata)[1])
+Val_Index &lt;- setdiff(row.names(m_bankdata), Train_Index)
+Train_Data &lt;- m_bankdata[Train_Index,]
+Validation_Data &lt;- m_bankdata[Val_Index,]
 
-summary(Train_Data)</code></pre>
-<pre><code>##       Age          Experience     Income           Family         CCAvg       
-##  Min.   :23.00   Min.   :-3   Min.   :  8.00   Min.   :1.00   Min.   : 0.000  
-##  1st Qu.:35.00   1st Qu.:10   1st Qu.: 39.00   1st Qu.:1.00   1st Qu.: 0.700  
-##  Median :45.00   Median :20   Median : 64.00   Median :2.00   Median : 1.600  
-##  Mean   :45.22   Mean   :20   Mean   : 73.84   Mean   :2.39   Mean   : 1.966  
-##  3rd Qu.:55.00   3rd Qu.:30   3rd Qu.: 98.00   3rd Qu.:3.00   3rd Qu.: 2.600  
-##  Max.   :67.00   Max.   :43   Max.   :224.00   Max.   :4.00   Max.   :10.000  
-##   Education_1      Education_2      Education_3        Mortgage     
-##  Min.   :0.0000   Min.   :0.0000   Min.   :0.0000   Min.   :  0.00  
-##  1st Qu.:0.0000   1st Qu.:0.0000   1st Qu.:0.0000   1st Qu.:  0.00  
-##  Median :0.0000   Median :0.0000   Median :0.0000   Median :  0.00  
-##  Mean   :0.4183   Mean   :0.2843   Mean   :0.2973   Mean   : 57.22  
-##  3rd Qu.:1.0000   3rd Qu.:1.0000   3rd Qu.:1.0000   3rd Qu.:102.00  
-##  Max.   :1.0000   Max.   :1.0000   Max.   :1.0000   Max.   :635.00  
-##  Securities.Account   CD.Account          Online         CreditCard   
-##  Min.   :0.0000     Min.   :0.00000   Min.   :0.0000   Min.   :0.000  
-##  1st Qu.:0.0000     1st Qu.:0.00000   1st Qu.:0.0000   1st Qu.:0.000  
-##  Median :0.0000     Median :0.00000   Median :1.0000   Median :0.000  
-##  Mean   :0.1013     Mean   :0.06267   Mean   :0.5957   Mean   :0.287  
-##  3rd Qu.:0.0000     3rd Qu.:0.00000   3rd Qu.:1.0000   3rd Qu.:1.000  
-##  Max.   :1.0000     Max.   :1.00000   Max.   :1.0000   Max.   :1.000  
-##  Personal.Loan
-##  No :2712     
-##  Yes: 288     
-##               
-##               
-##               
-## </code></pre>
-<pre class="r"><code>summary(Validation_Data)</code></pre>
-<pre><code>##       Age          Experience        Income           Family     
-##  Min.   :23.00   Min.   :-2.00   Min.   :  8.00   Min.   :1.000  
-##  1st Qu.:36.00   1st Qu.:11.00   1st Qu.: 39.00   1st Qu.:1.000  
-##  Median :46.00   Median :20.00   Median : 63.50   Median :2.000  
-##  Mean   :45.52   Mean   :20.27   Mean   : 73.67   Mean   :2.406  
-##  3rd Qu.:55.00   3rd Qu.:30.00   3rd Qu.: 99.00   3rd Qu.:4.000  
-##  Max.   :67.00   Max.   :43.00   Max.   :205.00   Max.   :4.000  
-##      CCAvg         Education_1      Education_2     Education_3    
-##  Min.   :0.0000   Min.   :0.0000   Min.   :0.000   Min.   :0.0000  
-##  1st Qu.:0.6525   1st Qu.:0.0000   1st Qu.:0.000   1st Qu.:0.0000  
-##  Median :1.5000   Median :0.0000   Median :0.000   Median :0.0000  
-##  Mean   :1.8954   Mean   :0.4205   Mean   :0.275   Mean   :0.3045  
-##  3rd Qu.:2.5000   3rd Qu.:1.0000   3rd Qu.:1.000   3rd Qu.:1.0000  
-##  Max.   :9.0000   Max.   :1.0000   Max.   :1.000   Max.   :1.0000  
-##     Mortgage      Securities.Account   CD.Account        Online      
-##  Min.   :  0.00   Min.   :0.000      Min.   :0.000   Min.   :0.0000  
-##  1st Qu.:  0.00   1st Qu.:0.000      1st Qu.:0.000   1st Qu.:0.0000  
-##  Median :  0.00   Median :0.000      Median :0.000   Median :1.0000  
-##  Mean   : 55.42   Mean   :0.109      Mean   :0.057   Mean   :0.5985  
-##  3rd Qu.:100.00   3rd Qu.:0.000      3rd Qu.:0.000   3rd Qu.:1.0000  
-##  Max.   :612.00   Max.   :1.000      Max.   :1.000   Max.   :1.0000  
-##    CreditCard     Personal.Loan
-##  Min.   :0.0000   No :1808     
-##  1st Qu.:0.0000   Yes: 192     
-##  Median :0.0000                
-##  Mean   :0.3045                
-##  3rd Qu.:1.0000                
-##  Max.   :1.0000</code></pre>
+#summary(Train_Data)</code></pre>
 <div id="now-well-move-to-normalize-the-numeric-data." class="section level2">
 <h2>Now we’ll move to normalize the numeric data.</h2>
 <pre class="r"><code>columnsare &lt;-c(1,2,3,4,5,9)
+bankdata.norm.df &lt;- m_bankdata
 train.norm.df &lt;- Train_Data
 valid.norm.df &lt;- Validation_Data
 norm.values &lt;- preProcess(Train_Data[,columnsare], method=c(&quot;center&quot;,&quot;scale&quot;))
 
+#put the normalized data back into the dataframes
 train.norm.df[, columnsare] &lt;-predict(norm.values,Train_Data[,columnsare])
 valid.norm.df[, columnsare] &lt;-predict(norm.values,Validation_Data[,columnsare])
 
-head(train.norm.df)</code></pre>
-<div data-pagedtable="false">
-<script data-pagedtable-source type="application/json">
-{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["Age"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["Experience"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["Income"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["Family"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["CCAvg"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["Education_1"],"name":[6],"type":["int"],"align":["right"]},{"label":["Education_2"],"name":[7],"type":["int"],"align":["right"]},{"label":["Education_3"],"name":[8],"type":["int"],"align":["right"]},{"label":["Mortgage"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["Securities.Account"],"name":[10],"type":["int"],"align":["right"]},{"label":["CD.Account"],"name":[11],"type":["int"],"align":["right"]},{"label":["Online"],"name":[12],"type":["int"],"align":["right"]},{"label":["CreditCard"],"name":[13],"type":["int"],"align":["right"]},{"label":["Personal.Loan"],"name":[14],"type":["fctr"],"align":["left"]}],"data":[{"1":"-1.75115759","2":"-1.64175201","3":"-0.53975762","4":"1.4068408","5":"-0.2093562","6":"1","7":"0","8":"0","9":"-0.5556392","10":"1","11":"0","12":"0","13":"0","14":"No","_rn_":"1"},{"1":"-0.01891037","2":"-0.08602589","3":"-0.86568072","4":"0.5330266","5":"-0.2665100","6":"1","7":"0","8":"0","9":"-0.5556392","10":"1","11":"0","12":"0","13":"0","14":"No","_rn_":"2"},{"1":"-0.88503398","2":"-0.95031818","3":"0.56838091","4":"-1.2146017","5":"0.4193354","6":"0","7":"1","8":"0","9":"-0.5556392","10":"0","11":"0","12":"0","13":"0","14":"No","_rn_":"4"},{"1":"-0.88503398","2":"-1.03674741","3":"-0.62667044","4":"1.4068408","5":"-0.5522790","6":"0","7":"1","8":"0","9":"-0.5556392","10":"0","11":"0","12":"0","13":"1","14":"No","_rn_":"5"},{"1":"0.67398852","2":"0.60540794","3":"-0.04000887","4":"-0.3407875","5":"-0.2665100","6":"0","7":"1","8":"0","9":"-0.5556392","10":"0","11":"0","12":"1","13":"0","14":"No","_rn_":"7"},{"1":"-0.88503398","2":"-0.86388895","3":"0.15554499","4":"0.5330266","5":"-0.7808941","6":"0","7":"1","8":"0","9":"0.4542902","10":"0","11":"0","12":"1","13":"0","14":"No","_rn_":"9"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
-  </script>
-</div>
-<pre class="r"><code>head(valid.norm.df)</code></pre>
-<div data-pagedtable="false">
-<script data-pagedtable-source type="application/json">
-{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["Age"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["Experience"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["Income"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["Family"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["CCAvg"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["Education_1"],"name":[6],"type":["int"],"align":["right"]},{"label":["Education_2"],"name":[7],"type":["int"],"align":["right"]},{"label":["Education_3"],"name":[8],"type":["int"],"align":["right"]},{"label":["Mortgage"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["Securities.Account"],"name":[10],"type":["int"],"align":["right"]},{"label":["CD.Account"],"name":[11],"type":["int"],"align":["right"]},{"label":["Online"],"name":[12],"type":["int"],"align":["right"]},{"label":["CreditCard"],"name":[13],"type":["int"],"align":["right"]},{"label":["Personal.Loan"],"name":[14],"type":["fctr"],"align":["left"]}],"data":[{"1":"-0.5385845","2":"-0.4317428","3":"-1.3654295","4":"-1.214602","5":"-0.55227897","6":"1","7":"0","8":"0","9":"-0.5556392","10":"0","11":"0","12":"0","13":"0","14":"No","_rn_":"3"},{"1":"-0.7118093","2":"-0.6046013","3":"-0.9743217","4":"1.406841","5":"-0.89520171","6":"0","7":"1","8":"0","9":"0.9495441","10":"0","11":"0","12":"1","13":"0","14":"No","_rn_":"6"},{"1":"0.4141514","2":"0.3461203","3":"-1.1264192","4":"-1.214602","5":"-0.95235550","6":"0","7":"0","8":"1","9":"-0.5556392","10":"0","11":"0","12":"0","13":"1","14":"No","_rn_":"8"},{"1":"1.7133369","2":"1.6425587","3":"0.6770219","4":"1.406841","5":"0.24787408","6":"0","7":"0","8":"1","9":"-0.5556392","10":"0","11":"0","12":"0","13":"0","14":"No","_rn_":"11"},{"1":"1.8865616","2":"1.8154171","3":"0.8291194","4":"-1.214602","5":"0.01925892","6":"1","7":"0","8":"0","9":"-0.5556392","10":"1","11":"0","12":"0","13":"0","14":"No","_rn_":"15"},{"1":"1.2802751","2":"0.8646956","3":"-1.1264192","4":"-1.214602","5":"-0.26651002","6":"0","7":"0","8":"1","9":"-0.5556392","10":"0","11":"0","12":"1","13":"1","14":"No","_rn_":"16"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
-  </script>
-</div>
+summary(train.norm.df)</code></pre>
+<pre><code>##       Age             Experience           Income            Family       
+##  Min.   :-1.97257   Min.   :-2.03718   Min.   :-1.4240   Min.   :-1.2058  
+##  1st Qu.:-0.82922   1st Qu.:-0.89531   1st Qu.:-0.7457   1st Qu.:-1.2058  
+##  Median :-0.03767   Median :-0.01695   Median :-0.2206   Median :-0.3368  
+##  Mean   : 0.00000   Mean   : 0.00000   Mean   : 0.0000   Mean   : 0.0000  
+##  3rd Qu.: 0.84183   3rd Qu.: 0.86141   3rd Qu.: 0.5452   3rd Qu.: 0.5321  
+##  Max.   : 1.89723   Max.   : 2.00328   Max.   : 3.3022   Max.   : 1.4010  
+##      CCAvg          Education_1      Education_2     Education_3    
+##  Min.   :-1.1059   Min.   :0.0000   Min.   :0.000   Min.   :0.0000  
+##  1st Qu.:-0.7016   1st Qu.:0.0000   1st Qu.:0.000   1st Qu.:0.0000  
+##  Median :-0.2396   Median :0.0000   Median :0.000   Median :0.0000  
+##  Mean   : 0.0000   Mean   :0.4173   Mean   :0.285   Mean   :0.2977  
+##  3rd Qu.: 0.3380   3rd Qu.:1.0000   3rd Qu.:1.000   3rd Qu.:1.0000  
+##  Max.   : 4.6700   Max.   :1.0000   Max.   :1.000   Max.   :1.0000  
+##     Mortgage       Securities.Account   CD.Account          Online      
+##  Min.   :-0.5679   Min.   :0.0000     Min.   :0.00000   Min.   :0.0000  
+##  1st Qu.:-0.5679   1st Qu.:0.0000     1st Qu.:0.00000   1st Qu.:0.0000  
+##  Median :-0.5679   Median :0.0000     Median :0.00000   Median :1.0000  
+##  Mean   : 0.0000   Mean   :0.1003     Mean   :0.05367   Mean   :0.5847  
+##  3rd Qu.: 0.4423   3rd Qu.:0.0000     3rd Qu.:0.00000   3rd Qu.:1.0000  
+##  Max.   : 5.7216   Max.   :1.0000     Max.   :1.00000   Max.   :1.0000  
+##    CreditCard     Personal.Loan
+##  Min.   :0.0000   No :2725     
+##  1st Qu.:0.0000   Yes: 275     
+##  Median :0.0000                
+##  Mean   :0.2927                
+##  3rd Qu.:1.0000                
+##  Max.   :1.0000</code></pre>
 </div>
 <div id="building-the-k-nn-model" class="section level2">
 <h2>Building the K-NN model</h2>
+<pre class="r"><code>library(&#39;FNN&#39;)</code></pre>
+<pre><code>## 
+## Attaching package: &#39;FNN&#39;</code></pre>
+<pre><code>## The following objects are masked from &#39;package:class&#39;:
+## 
+##     knn, knn.cv</code></pre>
 <pre class="r"><code>train.knn.predictors &lt;- train.norm.df[, 1:13]
 train.knn.success &lt;-train.norm.df[,14]
 valid.knn.predictors &lt;- valid.norm.df[, 1:13]
 valid.knn.success &lt;-valid.norm.df[,14]
-set.seed(321)
-WithK1 &lt;- knn (train=train.knn.predictors, test=valid.knn.predictors, cl=train.knn.success, k=1, prob=TRUE)
-confusionMatrix(WithK1,valid.knn.success,&quot;Yes&quot;)</code></pre>
+
+knn.results &lt;- knn (train=train.knn.predictors, test=valid.knn.predictors, cl=train.knn.success, k=1, prob=TRUE)
+confusionMatrix(knn.results,valid.knn.success, positive=&quot;Yes&quot;)</code></pre>
 <pre><code>## Confusion Matrix and Statistics
 ## 
 ##           Reference
 ## Prediction   No  Yes
-##        No  1796   53
-##        Yes   12  139
+##        No  1776   59
+##        Yes   19  146
 ##                                           
-##                Accuracy : 0.9675          
-##                  95% CI : (0.9588, 0.9748)
-##     No Information Rate : 0.904           
+##                Accuracy : 0.961           
+##                  95% CI : (0.9516, 0.9691)
+##     No Information Rate : 0.8975          
 ##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
 ##                                           
-##                   Kappa : 0.793           
+##                   Kappa : 0.768           
 ##                                           
-##  Mcnemar&#39;s Test P-Value : 6.999e-07       
+##  Mcnemar&#39;s Test P-Value : 1.006e-05       
 ##                                           
-##             Sensitivity : 0.7240          
-##             Specificity : 0.9934          
-##          Pos Pred Value : 0.9205          
-##          Neg Pred Value : 0.9713          
-##              Prevalence : 0.0960          
-##          Detection Rate : 0.0695          
-##    Detection Prevalence : 0.0755          
-##       Balanced Accuracy : 0.8587          
+##             Sensitivity : 0.7122          
+##             Specificity : 0.9894          
+##          Pos Pred Value : 0.8848          
+##          Neg Pred Value : 0.9678          
+##              Prevalence : 0.1025          
+##          Detection Rate : 0.0730          
+##    Detection Prevalence : 0.0825          
+##       Balanced Accuracy : 0.8508          
 ##                                           
 ##        &#39;Positive&#39; Class : Yes             
 ## </code></pre>
-<p>We see that the model has an accuracy of .977</p>
+<p>We see that the model has an accuracy of .961</p>
 </div>
 <div id="a-sample-customer" class="section level2">
 <h2>A sample customer</h2>
 <p>Now let’s take a sample customer with the following characteristics: Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, Education_1 = 0, Education_2 = 1, Education_3 = 0, Mortgage = 0, Securities Account = 0, CD Account = 0, Online = 1, and Credit Card = 1.</p>
 <p>We’ll evaluate him with our model.</p>
-<pre class="r"><code>customertest &lt;- Validation_Data[1,] #input and correct value types
-customertest$Age &lt;- as.integer(40)
-customertest$Experience &lt;- as.integer(40)
-customertest$Income &lt;- as.integer(40)
-#customertest$Family &lt;- as.factor(&quot;2&quot;)
-customertest$Family &lt;- as.integer(2)
-customertest$CCAvg &lt;- as.double(2)
-customertest$Education_1 &lt;- as.integer(0)
-customertest$Education_2 &lt;- as.integer(1)
-customertest$Education_3 &lt;- as.integer(0)
-customertest$Mortgage &lt;- as.integer(0)
-customertest$Securities.Account &lt;- as.integer(0)
-customertest$CD.Account &lt;- as.integer(0)
-customertest$Online &lt;- as.integer(1)
-customertest$Personal.Loan &lt;- as.factor(&quot;N/A&quot;)
-customertest$CreditCard &lt;- as.integer(1)
-customer.norm.df &lt;- customertest
-customer.norm.df[, columnsare]&lt;-predict(norm.values,customertest[,columnsare])#normalize the numeric values</code></pre>
-<p>Now that we’ve imported and normalized the customer’s data, we will test him against our K-NN from earlier.</p>
-<pre class="r"><code>customer.knn.predictors &lt;-customer.norm.df[,1:13]
-customer.knn.result &lt;- knn (train=train.knn.predictors, test=customer.knn.predictors, cl=train.knn.success, k=1, prob=TRUE)
-dim(customer.knn.result)</code></pre>
-<pre><code>## NULL</code></pre>
-<p>We see that the model predicts this customer would not qualify for a personal loan.</p>
-<p>##Tuning using Validation We will now test the performance of our model across various k’s on our validation set.</p>
-<pre class="r"><code>#accuracy.df &lt;- data.frame(k = seq(1,14,1), accuracy = rep(0 , 14))
+<pre class="r"><code>customertest = data.frame(Age = as.integer(40), Experience = as.integer(10), Income = as.integer(84), Family = as.integer(2), CCAvg = as.integer(2), Education1 = as.integer(0), Education2 = as.integer(1), Education3 = as.integer(0), Mortgage = as.integer(0), Securities.Account = as.integer(0), CD.Account = as.integer(0), Online = as.integer(1), CreditCard = as.integer(1))
 
-#for(i in 1:14){
-#  knn.pred &lt;- knn(train.norm.df[,columnsare],valid.norm.df[,columnsare], #cl=train.norm.df[,10],k=i)
-#  accuracy.df[i,2] &lt;- confusionMatrix(knn.pred,valid.norm.df[,10])$overall
-#}
-#accuracy.df</code></pre>
-<p>##Part 2 Now we do part 2 - a training, validation, and test set of 50,30,20% respectively. ###```{r} Test_Index = createDataPartition(m_bankdata$Sales,p=0.2, list=FALSE) # 20% reserved for Test Test_Data = m_carseats[Test_Index,] TraVal_Data = m_carseats[-Test_Index,] # Validation and Training data is rest</p>
-<p>Train_Index = createDataPartition(TraVal_Data$Sales,p=0.75, list=FALSE) # 75% of remaining data as training Train_Data = TraVal_Data[Train_Index,] Validation_Data = TraVal_Data[-Train_Index,] # rest as validation</p>
-<p>summary(Train_Data) summary(Validation_Data) summary(Test_Data) ```</p>
+customer.norm.df &lt;- customertest
+customer.norm.df[, columnsare]&lt;-predict(norm.values,customertest[,columnsare])#normalize the quantitative values</code></pre>
+<p>Now that we’ve imported and normalized the customer’s data, we will test him against our K-NN from earlier.</p>
+<pre class="r"><code>customer.knn &lt;- knn(train=train.knn.predictors, test=customer.norm.df,cl=train.knn.success,k=1, prob=TRUE)
+head(customer.knn)</code></pre>
+<pre><code>## [1] No
+## Levels: No</code></pre>
+<p>We see that the model predicts this customer would not accept a loan.</p>
+<p>##Tuning using Validation We will now test the performance of our model across various k’s on our validation set so that we can discuss the balance for k.</p>
+<pre class="r"><code>library(FNN)
+accuracy.df &lt;- data.frame(k = seq(1,14,1), accuracy = rep(0 , 14))
+
+for(i in 1:14){
+  knn.pred &lt;- knn(train.knn.predictors,valid.knn.predictors, cl=train.knn.success,k=i)
+accuracy.df[i,2] &lt;- confusionMatrix(knn.pred, valid.knn.success)$overall[1]
+  }
+accuracy.df</code></pre>
+<div data-pagedtable="false">
+<script data-pagedtable-source type="application/json">
+{"columns":[{"label":["k"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["accuracy"],"name":[2],"type":["dbl"],"align":["right"]}],"data":[{"1":"1","2":"0.9610"},{"1":"2","2":"0.9545"},{"1":"3","2":"0.9620"},{"1":"4","2":"0.9550"},{"1":"5","2":"0.9580"},{"1":"6","2":"0.9495"},{"1":"7","2":"0.9545"},{"1":"8","2":"0.9485"},{"1":"9","2":"0.9540"},{"1":"10","2":"0.9505"},{"1":"11","2":"0.9520"},{"1":"12","2":"0.9470"},{"1":"13","2":"0.9510"},{"1":"14","2":"0.9445"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+<pre class="r"><code>which.max(accuracy.df$accuracy)</code></pre>
+<pre><code>## [1] 3</code></pre>
+<pre class="r"><code>#Commented out - was going to do both k selection by validation and training
+#library(caret)
+#carettraindata&lt;-train.norm.df[,1:13]
+#carettrainclasses&lt;-train.norm.df[,14]
+#model&lt;-train(carettraindata,carettrainclasses,&quot;knn&quot;)
+#model</code></pre>
+<p>We see from the ‘which’ function that the best performing k in the range of 1 to 14 is 3. This k is the most accurate, and balances between overfitting and ignoring predictors.</p>
+<pre class="r"><code>customer.knn3 &lt;- knn(train=train.knn.predictors, test=customer.norm.df,cl=train.knn.success,k=3, prob=TRUE)#he is the same custoemr as our earlier example, so we don&#39;t need to renormalize
+head(customer.knn3)</code></pre>
+<pre><code>## [1] No
+## Levels: No</code></pre>
+</div>
+<div id="further-examination-of-k-3" class="section level2">
+<h2>Further examination of k = 3</h2>
+<p>Below is a confusion matrix of the validation data for k=3 (the best k).</p>
+<pre class="r"><code>knn.k3 &lt;- knn(train = train.knn.predictors,test=valid.knn.predictors,cl=train.knn.success,k=3, prob=TRUE)
+confusionMatrix(knn.k3,valid.knn.success,)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction   No  Yes
+##        No  1792   73
+##        Yes    3  132
+##                                           
+##                Accuracy : 0.962           
+##                  95% CI : (0.9527, 0.9699)
+##     No Information Rate : 0.8975          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.7567          
+##                                           
+##  Mcnemar&#39;s Test P-Value : 2.476e-15       
+##                                           
+##             Sensitivity : 0.9983          
+##             Specificity : 0.6439          
+##          Pos Pred Value : 0.9609          
+##          Neg Pred Value : 0.9778          
+##              Prevalence : 0.8975          
+##          Detection Rate : 0.8960          
+##    Detection Prevalence : 0.9325          
+##       Balanced Accuracy : 0.8211          
+##                                           
+##        &#39;Positive&#39; Class : No              
+## </code></pre>
+<p>We see that our accuracy is high at .9620 (and thus an error rate of 3.8%). We also have a very low false-negative. Precision (TP/(TP+FP)is low at 64% - this would be the worst metric as we are hoping to target the most responsive custoemrs, so a low precision and high false-positives (Type I errors) makes the model problematic.</p>
+</div>
+<div id="repartitioning-for-a-test-set" class="section level2">
+<h2>Repartitioning for a test set</h2>
+<pre class="r"><code>set.seed(1)
+Train_Index &lt;- sample(row.names(m_bankdata), .5*dim(m_bankdata)[1])
+Val_Index &lt;- sample(setdiff(row.names(m_bankdata),Train_Index),.3*dim(m_bankdata)[1])
+Test_Index =setdiff(row.names(m_bankdata),union(Train_Index,Val_Index))
+
+Train_Data &lt;- m_bankdata[Train_Index,]
+Validation_Data &lt;- m_bankdata[Val_Index,]
+Test_Data &lt;- m_bankdata [Test_Index,]
+
+norm.values3 &lt;- preProcess(m_bankdata[,columnsare], method=c(&quot;center&quot;, &quot;scale&quot;))
+train.norm.df3 = Train_Data
+val.norm.df3 = Validation_Data
+test.norm.df3 = Test_Data
+train.norm.df3[, columnsare] &lt;- predict(norm.values3, Train_Data[, columnsare])
+val.norm.df3[, columnsare] &lt;- predict(norm.values3, Validation_Data[, columnsare])
+test.norm.df3[, columnsare] &lt;- predict(norm.values3, Test_Data[, columnsare])
+
+knn.train &lt;- knn(train=train.norm.df3[,-14],test=train.norm.df3[,-14],cl=train.norm.df3[,14], k=3, prob=TRUE)
+knn.val&lt;- knn(train=train.norm.df3[,-14],test=val.norm.df3[,-14],cl=train.norm.df3[,14],k=3, prob=TRUE)
+knn.test&lt;- knn(train=train.norm.df3[,-14],test=test.norm.df3[,-14],cl=train.norm.df3[,14],k=3, prob=TRUE)
+
+confusionMatrix(knn.train,train.norm.df3[,14], positive=&quot;Yes&quot;)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction   No  Yes
+##        No  2266   54
+##        Yes    2  178
+##                                         
+##                Accuracy : 0.9776        
+##                  95% CI : (0.971, 0.983)
+##     No Information Rate : 0.9072        
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16     
+##                                         
+##                   Kappa : 0.8521        
+##                                         
+##  Mcnemar&#39;s Test P-Value : 9.416e-12     
+##                                         
+##             Sensitivity : 0.7672        
+##             Specificity : 0.9991        
+##          Pos Pred Value : 0.9889        
+##          Neg Pred Value : 0.9767        
+##              Prevalence : 0.0928        
+##          Detection Rate : 0.0712        
+##    Detection Prevalence : 0.0720        
+##       Balanced Accuracy : 0.8832        
+##                                         
+##        &#39;Positive&#39; Class : Yes           
+## </code></pre>
+<pre class="r"><code>confusionMatrix(knn.val,val.norm.df3[,14], positive=&quot;Yes&quot;)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction   No  Yes
+##        No  1362   44
+##        Yes    2   92
+##                                           
+##                Accuracy : 0.9693          
+##                  95% CI : (0.9593, 0.9775)
+##     No Information Rate : 0.9093          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.784           
+##                                           
+##  Mcnemar&#39;s Test P-Value : 1.493e-09       
+##                                           
+##             Sensitivity : 0.67647         
+##             Specificity : 0.99853         
+##          Pos Pred Value : 0.97872         
+##          Neg Pred Value : 0.96871         
+##              Prevalence : 0.09067         
+##          Detection Rate : 0.06133         
+##    Detection Prevalence : 0.06267         
+##       Balanced Accuracy : 0.83750         
+##                                           
+##        &#39;Positive&#39; Class : Yes             
+## </code></pre>
+<pre class="r"><code>confusionMatrix(knn.test,test.norm.df3[,14], positive=&quot;Yes&quot;)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction  No Yes
+##        No  886  45
+##        Yes   2  67
+##                                          
+##                Accuracy : 0.953          
+##                  95% CI : (0.938, 0.9653)
+##     No Information Rate : 0.888          
+##     P-Value [Acc &gt; NIR] : 2.968e-13      
+##                                          
+##                   Kappa : 0.7161         
+##                                          
+##  Mcnemar&#39;s Test P-Value : 8.993e-10      
+##                                          
+##             Sensitivity : 0.5982         
+##             Specificity : 0.9977         
+##          Pos Pred Value : 0.9710         
+##          Neg Pred Value : 0.9517         
+##              Prevalence : 0.1120         
+##          Detection Rate : 0.0670         
+##    Detection Prevalence : 0.0690         
+##       Balanced Accuracy : 0.7980         
+##                                          
+##        &#39;Positive&#39; Class : Yes            
+## </code></pre>
+<p>We see that the accuracies are Training: .978; Validation: .9693, and Test: .953. This makes sense as the model was trained on the higher amounts of data.</p>
 </div>
 
 

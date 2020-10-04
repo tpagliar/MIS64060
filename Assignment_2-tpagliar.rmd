@@ -13,7 +13,7 @@ output:
 
 ```{r setup, include=FALSE}```
 ##Assignment 2 for Tim Pagliari
-First, we'll install the libraries used in this project:
+First, we'll include the libraries used in this project:
 ```{r}
 library(caret)
 library(class)
@@ -27,12 +27,6 @@ Now I'll load the UniversalBank.csv file which contains customer information and
 ```{r}
 BankData <- read.csv("~/GIT/MIS64060-tpagliar/UniversalBank.csv")
 BankData$Personal.Loan<-factor(BankData$Personal.Loan,levels=c('0','1'),labels=c('No','Yes'))
-#BankData$ZIP.Code<-as.factor(BankData$ZIP.Code)
-#BankData$Family<-as.factor(BankData$Family)
-#BankData$Online<-factor(BankData$Online,levels=c('0','1'),labels=c('No','Yes'))
-#BankData$CD.Account<-factor(BankData$CD.Account,levels=c('0','1'),labels=c('No','Yes'))
-#BankData$CreditCard<-factor(BankData$CreditCard,levels=c('0','1'),labels=c('No','Yes'))
-#BankData$Securities.Account<-factor(BankData$Securities.Account,levels=c('0','1'), labels=c('No','Yes'))
 summary(BankData)
 ```
 
@@ -40,50 +34,47 @@ summary(BankData)
 Now we should select our relevant data, (in this case, all but ID and Zip - we'll also convert Education into 3 dummy variables for each education level) and divide the set into training (60%) and validation (40%) sets.
 ```{r}
 library(dplyr)
-
 dummy_bankdata <- dummy_columns(BankData, select_columns = 'Education')
 m_bankdata <- select(dummy_bankdata,Age,Experience,Income,Family,CCAvg,Education_1,Education_2,Education_3,Mortgage,Personal.Loan,Securities.Account,CD.Account,Online,CreditCard)
-#m_bankdata$Education_1<-factor(m_bankdata$Education_1,levels=c('0','1'),labels=c('No','Yes'))
-#m_bankdata$Education_2<-factor(m_bankdata$Education_2,levels=c('0','1'),labels=c('No','Yes'))
-#m_bankdata$Education_3<-factor(m_bankdata$Education_3,levels=c('0','1'),labels=c('No','Yes'))
 m_bankdata <- m_bankdata %>% relocate(Personal.Loan,.after=last_col())#move personal.loan to the end to make our lives easier later on.
-set.seed(123)
-Train_Index=createDataPartition(m_bankdata$Personal.Loan,p=0.60, list=FALSE) # Partition 60% of data for training.
-Train_Data = m_bankdata[Train_Index,]
-Validation_Data = m_bankdata[-Train_Index,]
+set.seed(1)
+Train_Index <- sample(row.names(m_bankdata), .6*dim(m_bankdata)[1])
+Val_Index <- setdiff(row.names(m_bankdata), Train_Index)
+Train_Data <- m_bankdata[Train_Index,]
+Validation_Data <- m_bankdata[Val_Index,]
 
-summary(Train_Data)
-summary(Validation_Data)
+#summary(Train_Data)
 ```
 
 ## Now we'll move to normalize the numeric data.
 
 ```{r}
 columnsare <-c(1,2,3,4,5,9)
+bankdata.norm.df <- m_bankdata
 train.norm.df <- Train_Data
 valid.norm.df <- Validation_Data
 norm.values <- preProcess(Train_Data[,columnsare], method=c("center","scale"))
 
+#put the normalized data back into the dataframes
 train.norm.df[, columnsare] <-predict(norm.values,Train_Data[,columnsare])
 valid.norm.df[, columnsare] <-predict(norm.values,Validation_Data[,columnsare])
 
-head(train.norm.df)
-head(valid.norm.df)
+summary(train.norm.df)
 ```
 
 ## Building the K-NN model
 
 ```{r}
-
+library('FNN')
 train.knn.predictors <- train.norm.df[, 1:13]
 train.knn.success <-train.norm.df[,14]
 valid.knn.predictors <- valid.norm.df[, 1:13]
 valid.knn.success <-valid.norm.df[,14]
-set.seed(321)
-WithK1 <- knn (train=train.knn.predictors, test=valid.knn.predictors, cl=train.knn.success, k=1, prob=TRUE)
-confusionMatrix(WithK1,valid.knn.success,"Yes")
+
+knn.results <- knn (train=train.knn.predictors, test=valid.knn.predictors, cl=train.knn.success, k=1, prob=TRUE)
+confusionMatrix(knn.results,valid.knn.success, positive="Yes")
 ```
-We see that the model has an accuracy of .977
+We see that the model has an accuracy of .961
 
 ## A sample customer
 Now let's take a sample customer with the following characteristics: 
@@ -104,58 +95,79 @@ and Credit Card = 1.
 We'll evaluate him with our model.
 
 ```{r}
-customertest <- Validation_Data[1,] #input and correct value types
-customertest$Age <- as.integer(40)
-customertest$Experience <- as.integer(40)
-customertest$Income <- as.integer(40)
-#customertest$Family <- as.factor("2")
-customertest$Family <- as.integer(2)
-customertest$CCAvg <- as.double(2)
-customertest$Education_1 <- as.integer(0)
-customertest$Education_2 <- as.integer(1)
-customertest$Education_3 <- as.integer(0)
-customertest$Mortgage <- as.integer(0)
-customertest$Securities.Account <- as.integer(0)
-customertest$CD.Account <- as.integer(0)
-customertest$Online <- as.integer(1)
-customertest$Personal.Loan <- as.factor("N/A")
-customertest$CreditCard <- as.integer(1)
+customertest = data.frame(Age = as.integer(40), Experience = as.integer(10), Income = as.integer(84), Family = as.integer(2), CCAvg = as.integer(2), Education1 = as.integer(0), Education2 = as.integer(1), Education3 = as.integer(0), Mortgage = as.integer(0), Securities.Account = as.integer(0), CD.Account = as.integer(0), Online = as.integer(1), CreditCard = as.integer(1))
+
 customer.norm.df <- customertest
-customer.norm.df[, columnsare]<-predict(norm.values,customertest[,columnsare])#normalize the numeric values
+customer.norm.df[, columnsare]<-predict(norm.values,customertest[,columnsare])#normalize the quantitative values
 ```
 Now that we've imported and normalized the customer's data, we will test him against our K-NN from earlier.
 
 ```{r}
-customer.knn.predictors <-customer.norm.df[,1:13]
-customer.knn.result <- knn (train=train.knn.predictors, test=customer.knn.predictors, cl=train.knn.success, k=1, prob=TRUE)
-dim(customer.knn.result)
+customer.knn <- knn(train=train.knn.predictors, test=customer.norm.df,cl=train.knn.success,k=1, prob=TRUE)
+head(customer.knn)
 ```
-We see that the model predicts this customer would not qualify for a personal loan.
+We see that the model predicts this customer would not accept a loan.
 
 ##Tuning using Validation
-We will now test the performance of our model across various k's on our validation set.
+We will now test the performance of our model across various k's on our validation set so that we can discuss the balance for k.
 ```{r}
-#accuracy.df <- data.frame(k = seq(1,14,1), accuracy = rep(0 , 14))
+library(FNN)
+accuracy.df <- data.frame(k = seq(1,14,1), accuracy = rep(0 , 14))
 
-#for(i in 1:14){
-#  knn.pred <- knn(train.norm.df[,columnsare],valid.norm.df[,columnsare], #cl=train.norm.df[,10],k=i)
-#  accuracy.df[i,2] <- confusionMatrix(knn.pred,valid.norm.df[,10])$overall
-#}
-#accuracy.df
+for(i in 1:14){
+  knn.pred <- knn(train.knn.predictors,valid.knn.predictors, cl=train.knn.success,k=i)
+accuracy.df[i,2] <- confusionMatrix(knn.pred, valid.knn.success)$overall[1]
+  }
+accuracy.df
+which.max(accuracy.df$accuracy)
+
+#Commented out - was going to do both k selection by validation and training
+#library(caret)
+#carettraindata<-train.norm.df[,1:13]
+#carettrainclasses<-train.norm.df[,14]
+#model<-train(carettraindata,carettrainclasses,"knn")
+#model
+```
+We see from the 'which' function that the best performing k in the range of 1 to 14 is `r which.max(accuracy.df$accuracy)`. This k is the most accurate, and balances between overfitting and ignoring predictors.
+
+```{r}
+customer.knn3 <- knn(train=train.knn.predictors, test=customer.norm.df,cl=train.knn.success,k=3, prob=TRUE)#he is the same custoemr as our earlier example, so we don't need to renormalize
+head(customer.knn3)
 ```
 
-##Part 2
-Now we do part 2 - a training, validation, and test set of 50,30,20% respectively.
-###```{r}
-Test_Index = createDataPartition(m_bankdata$Sales,p=0.2, list=FALSE) # 20% reserved for Test
-Test_Data = m_carseats[Test_Index,]
-TraVal_Data = m_carseats[-Test_Index,] # Validation and Training data is rest
-
-Train_Index = createDataPartition(TraVal_Data$Sales,p=0.75, list=FALSE) # 75% of remaining data as training
-Train_Data = TraVal_Data[Train_Index,]
-Validation_Data = TraVal_Data[-Train_Index,] # rest as validation
-
-summary(Train_Data)
-summary(Validation_Data)
-summary(Test_Data)
+## Further examination of k = 3
+Below is a confusion matrix of the validation data for k=3 (the best k).
+```{R}
+knn.k3 <- knn(train = train.knn.predictors,test=valid.knn.predictors,cl=train.knn.success,k=3, prob=TRUE)
+confusionMatrix(knn.k3,valid.knn.success,)
 ```
+We see that our accuracy is high at .9620 (and thus an error rate of 3.8%). We also have a very low false-negative. Precision (TP/(TP+FP)is low at 64% - this would be the worst metric as we are hoping to target the most responsive custoemrs, so a low precision and high false-positives (Type I errors) makes the model problematic.
+
+## Repartitioning for a test set
+```{r}
+set.seed(1)
+Train_Index <- sample(row.names(m_bankdata), .5*dim(m_bankdata)[1])
+Val_Index <- sample(setdiff(row.names(m_bankdata),Train_Index),.3*dim(m_bankdata)[1])
+Test_Index =setdiff(row.names(m_bankdata),union(Train_Index,Val_Index))
+
+Train_Data <- m_bankdata[Train_Index,]
+Validation_Data <- m_bankdata[Val_Index,]
+Test_Data <- m_bankdata [Test_Index,]
+
+norm.values3 <- preProcess(m_bankdata[,columnsare], method=c("center", "scale"))
+train.norm.df3 = Train_Data
+val.norm.df3 = Validation_Data
+test.norm.df3 = Test_Data
+train.norm.df3[, columnsare] <- predict(norm.values3, Train_Data[, columnsare])
+val.norm.df3[, columnsare] <- predict(norm.values3, Validation_Data[, columnsare])
+test.norm.df3[, columnsare] <- predict(norm.values3, Test_Data[, columnsare])
+
+knn.train <- knn(train=train.norm.df3[,-14],test=train.norm.df3[,-14],cl=train.norm.df3[,14], k=3, prob=TRUE)
+knn.val<- knn(train=train.norm.df3[,-14],test=val.norm.df3[,-14],cl=train.norm.df3[,14],k=3, prob=TRUE)
+knn.test<- knn(train=train.norm.df3[,-14],test=test.norm.df3[,-14],cl=train.norm.df3[,14],k=3, prob=TRUE)
+
+confusionMatrix(knn.train,train.norm.df3[,14], positive="Yes")
+confusionMatrix(knn.val,val.norm.df3[,14], positive="Yes")
+confusionMatrix(knn.test,test.norm.df3[,14], positive="Yes")
+```
+We see that the accuracies are Training: .978; Validation: .9693, and Test: .953. This makes sense as the model was trained on the higher amounts of data.
