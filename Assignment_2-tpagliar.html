@@ -1641,15 +1641,17 @@ summary {
 
 <div id="TOC">
 <ul>
+<li><a href="#data-selection">Data Selection</a></li>
 <li><a href="#now-well-move-to-normalize-the-numeric-data.">Now we’ll move to normalize the numeric data.</a></li>
 <li><a href="#building-the-k-nn-model">Building the K-NN model</a></li>
 <li><a href="#a-sample-customer">A sample customer</a></li>
+<li><a href="#tuning-using-validation">Tuning using Validation</a></li>
 <li><a href="#further-examination-of-k-3">Further examination of k = 3</a></li>
 <li><a href="#repartitioning-for-a-test-set">Repartitioning for a test set</a></li>
 </ul>
 </div>
 
-<p><code>{r setup, include=FALSE}</code> ##Assignment 2 for Tim Pagliari First, we’ll include the libraries used in this project:</p>
+<p><code>{r setup, include=FALSE}</code> ## Assignment 2 for Tim Pagliari First, we’ll include the libraries used in this project:</p>
 <pre class="r"><code>library(caret)</code></pre>
 <pre><code>## Loading required package: lattice</code></pre>
 <pre><code>## Loading required package: ggplot2</code></pre>
@@ -1691,7 +1693,9 @@ summary(BankData)</code></pre>
 ##  Mean   :0.1044     Mean   :0.0604   Mean   :0.5968   Mean   :0.294  
 ##  3rd Qu.:0.0000     3rd Qu.:0.0000   3rd Qu.:1.0000   3rd Qu.:1.000  
 ##  Max.   :1.0000     Max.   :1.0000   Max.   :1.0000   Max.   :1.000</code></pre>
-<p>##Data Selection Now we should select our relevant data, (in this case, all but ID and Zip - we’ll also convert Education into 3 dummy variables for each education level) and divide the set into training (60%) and validation (40%) sets.</p>
+<div id="data-selection" class="section level2">
+<h2>Data Selection</h2>
+<p>Now we should select our relevant data, (in this case, all but ID and Zip - we’ll also convert Education into 3 dummy variables for each education level) and divide the set into training (60%) and validation (40%) sets.</p>
 <pre class="r"><code>library(dplyr)
 dummy_bankdata &lt;- dummy_columns(BankData, select_columns = &#39;Education&#39;)
 m_bankdata &lt;- select(dummy_bankdata,Age,Experience,Income,Family,CCAvg,Education_1,Education_2,Education_3,Mortgage,Personal.Loan,Securities.Account,CD.Account,Online,CreditCard)
@@ -1703,6 +1707,7 @@ Train_Data &lt;- m_bankdata[Train_Index,]
 Validation_Data &lt;- m_bankdata[Val_Index,]
 
 #summary(Train_Data)</code></pre>
+</div>
 <div id="now-well-move-to-normalize-the-numeric-data." class="section level2">
 <h2>Now we’ll move to normalize the numeric data.</h2>
 <pre class="r"><code>columnsare &lt;-c(1,2,3,4,5,9)
@@ -1793,20 +1798,23 @@ confusionMatrix(knn.results,valid.knn.success, positive=&quot;Yes&quot;)</code><
 <h2>A sample customer</h2>
 <p>Now let’s take a sample customer with the following characteristics: Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, Education_1 = 0, Education_2 = 1, Education_3 = 0, Mortgage = 0, Securities Account = 0, CD Account = 0, Online = 1, and Credit Card = 1.</p>
 <p>We’ll evaluate him with our model.</p>
-<pre class="r"><code>customertest = data.frame(Age = as.integer(40), Experience = as.integer(10), Income = as.integer(84), Family = as.integer(2), CCAvg = as.integer(2), Education1 = as.integer(0), Education2 = as.integer(1), Education3 = as.integer(0), Mortgage = as.integer(0), Securities.Account = as.integer(0), CD.Account = as.integer(0), Online = as.integer(1), CreditCard = as.integer(1))
+<pre class="r"><code>customertest = data.frame(Age = as.integer(40), Experience = as.integer(10), Income = as.integer(84), Family = as.integer(2), CCAvg = as.integer(2), Education1 = as.integer(0), Education2 = as.integer(1), Education3 = as.integer(0), Mortgage = as.integer(0), Securities.Account = as.integer(0), CD.Account = as.integer(0), Online = as.integer(1), CreditCard = as.integer(1)) #load the dataa into a customertest dataframe.
 
 customer.norm.df &lt;- customertest
 customer.norm.df[, columnsare]&lt;-predict(norm.values,customertest[,columnsare])#normalize the quantitative values</code></pre>
 <p>Now that we’ve imported and normalized the customer’s data, we will test him against our K-NN from earlier.</p>
-<pre class="r"><code>customer.knn &lt;- knn(train=train.knn.predictors, test=customer.norm.df,cl=train.knn.success,k=1, prob=TRUE)
-head(customer.knn)</code></pre>
+<pre class="r"><code>customer.knn &lt;- knn(train=train.knn.predictors, test=customer.norm.df,cl=train.knn.success,k=1, prob=TRUE) #calculate knn for customer.
+head(customer.knn) </code></pre>
 <pre><code>## [1] No
 ## Levels: No</code></pre>
-<p>We see that the model predicts this customer would not accept a loan.</p>
-<p>##Tuning using Validation We will now test the performance of our model across various k’s on our validation set so that we can discuss the balance for k.</p>
+<p>We see that the model predicts this customer would not accept a loan offer.</p>
+</div>
+<div id="tuning-using-validation" class="section level2">
+<h2>Tuning using Validation</h2>
+<p>We will now test the performance of our model across various k’s on our validation set so that we can discuss the balance for k.</p>
 <pre class="r"><code>library(FNN)
 accuracy.df &lt;- data.frame(k = seq(1,14,1), accuracy = rep(0 , 14))
-
+#now we&#39;ll create a table of all k and accuracies from 1-14
 for(i in 1:14){
   knn.pred &lt;- knn(train.knn.predictors,valid.knn.predictors, cl=train.knn.success,k=i)
 accuracy.df[i,2] &lt;- confusionMatrix(knn.pred, valid.knn.success)$overall[1]
@@ -1819,12 +1827,6 @@ accuracy.df</code></pre>
 </div>
 <pre class="r"><code>which.max(accuracy.df$accuracy)</code></pre>
 <pre><code>## [1] 3</code></pre>
-<pre class="r"><code>#Commented out - was going to do both k selection by validation and training
-#library(caret)
-#carettraindata&lt;-train.norm.df[,1:13]
-#carettrainclasses&lt;-train.norm.df[,14]
-#model&lt;-train(carettraindata,carettrainclasses,&quot;knn&quot;)
-#model</code></pre>
 <p>We see from the ‘which’ function that the best performing k in the range of 1 to 14 is 3. This k is the most accurate, and balances between overfitting and ignoring predictors.</p>
 <pre class="r"><code>customer.knn3 &lt;- knn(train=train.knn.predictors, test=customer.norm.df,cl=train.knn.success,k=3, prob=TRUE)#he is the same custoemr as our earlier example, so we don&#39;t need to renormalize
 head(customer.knn3)</code></pre>
@@ -1868,14 +1870,16 @@ confusionMatrix(knn.k3,valid.knn.success,)</code></pre>
 <div id="repartitioning-for-a-test-set" class="section level2">
 <h2>Repartitioning for a test set</h2>
 <pre class="r"><code>set.seed(1)
-Train_Index &lt;- sample(row.names(m_bankdata), .5*dim(m_bankdata)[1])
-Val_Index &lt;- sample(setdiff(row.names(m_bankdata),Train_Index),.3*dim(m_bankdata)[1])
-Test_Index =setdiff(row.names(m_bankdata),union(Train_Index,Val_Index))
+Train_Index &lt;- sample(row.names(m_bankdata), .5*dim(m_bankdata)[1])#create train index
+Val_Index &lt;- sample(setdiff(row.names(m_bankdata),Train_Index),.3*dim(m_bankdata)[1])#create validation index
+Test_Index =setdiff(row.names(m_bankdata),union(Train_Index,Val_Index))#create test index
 
+#load the data
 Train_Data &lt;- m_bankdata[Train_Index,]
 Validation_Data &lt;- m_bankdata[Val_Index,]
 Test_Data &lt;- m_bankdata [Test_Index,]
 
+#normalize the quantitative data
 norm.values3 &lt;- preProcess(m_bankdata[,columnsare], method=c(&quot;center&quot;, &quot;scale&quot;))
 train.norm.df3 = Train_Data
 val.norm.df3 = Validation_Data
@@ -1884,10 +1888,12 @@ train.norm.df3[, columnsare] &lt;- predict(norm.values3, Train_Data[, columnsare
 val.norm.df3[, columnsare] &lt;- predict(norm.values3, Validation_Data[, columnsare])
 test.norm.df3[, columnsare] &lt;- predict(norm.values3, Test_Data[, columnsare])
 
+#run knn for all 3
 knn.train &lt;- knn(train=train.norm.df3[,-14],test=train.norm.df3[,-14],cl=train.norm.df3[,14], k=3, prob=TRUE)
 knn.val&lt;- knn(train=train.norm.df3[,-14],test=val.norm.df3[,-14],cl=train.norm.df3[,14],k=3, prob=TRUE)
 knn.test&lt;- knn(train=train.norm.df3[,-14],test=test.norm.df3[,-14],cl=train.norm.df3[,14],k=3, prob=TRUE)
 
+#display the confusion matrices
 confusionMatrix(knn.train,train.norm.df3[,14], positive=&quot;Yes&quot;)</code></pre>
 <pre><code>## Confusion Matrix and Statistics
 ## 

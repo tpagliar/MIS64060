@@ -11,7 +11,9 @@ output:
     theme: cerulean
 ---
 
-```{r setup, include=FALSE}```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
 ## Assignment 2 for Tim Pagliari
 First, we'll include the libraries used in this project:
 ```{r}
@@ -95,7 +97,7 @@ and Credit Card = 1.
 We'll evaluate him with our model.
 
 ```{r}
-customertest = data.frame(Age = as.integer(40), Experience = as.integer(10), Income = as.integer(84), Family = as.integer(2), CCAvg = as.integer(2), Education1 = as.integer(0), Education2 = as.integer(1), Education3 = as.integer(0), Mortgage = as.integer(0), Securities.Account = as.integer(0), CD.Account = as.integer(0), Online = as.integer(1), CreditCard = as.integer(1))
+customertest = data.frame(Age = as.integer(40), Experience = as.integer(10), Income = as.integer(84), Family = as.integer(2), CCAvg = as.integer(2), Education1 = as.integer(0), Education2 = as.integer(1), Education3 = as.integer(0), Mortgage = as.integer(0), Securities.Account = as.integer(0), CD.Account = as.integer(0), Online = as.integer(1), CreditCard = as.integer(1)) #load the dataa into a customertest dataframe.
 
 customer.norm.df <- customertest
 customer.norm.df[, columnsare]<-predict(norm.values,customertest[,columnsare])#normalize the quantitative values
@@ -103,30 +105,23 @@ customer.norm.df[, columnsare]<-predict(norm.values,customertest[,columnsare])#n
 Now that we've imported and normalized the customer's data, we will test him against our K-NN from earlier.
 
 ```{r}
-customer.knn <- knn(train=train.knn.predictors, test=customer.norm.df,cl=train.knn.success,k=1, prob=TRUE)
-head(customer.knn)
+customer.knn <- knn(train=train.knn.predictors, test=customer.norm.df,cl=train.knn.success,k=1, prob=TRUE) #calculate knn for customer.
+head(customer.knn) 
 ```
-We see that the model predicts this customer would not accept a loan.
+We see that the model predicts this customer would not accept a loan offer.
 
 ## Tuning using Validation
 We will now test the performance of our model across various k's on our validation set so that we can discuss the balance for k.
 ```{r}
 library(FNN)
 accuracy.df <- data.frame(k = seq(1,14,1), accuracy = rep(0 , 14))
-
+#now we'll create a table of all k and accuracies from 1-14
 for(i in 1:14){
   knn.pred <- knn(train.knn.predictors,valid.knn.predictors, cl=train.knn.success,k=i)
 accuracy.df[i,2] <- confusionMatrix(knn.pred, valid.knn.success)$overall[1]
   }
 accuracy.df
 which.max(accuracy.df$accuracy)
-
-#Commented out - was going to do both k selection by validation and training
-#library(caret)
-#carettraindata<-train.norm.df[,1:13]
-#carettrainclasses<-train.norm.df[,14]
-#model<-train(carettraindata,carettrainclasses,"knn")
-#model
 ```
 We see from the 'which' function that the best performing k in the range of 1 to 14 is `r which.max(accuracy.df$accuracy)`. This k is the most accurate, and balances between overfitting and ignoring predictors.
 
@@ -146,14 +141,16 @@ We see that our accuracy is high at .9620 (and thus an error rate of 3.8%). We a
 ## Repartitioning for a test set
 ```{r}
 set.seed(1)
-Train_Index <- sample(row.names(m_bankdata), .5*dim(m_bankdata)[1])
-Val_Index <- sample(setdiff(row.names(m_bankdata),Train_Index),.3*dim(m_bankdata)[1])
-Test_Index =setdiff(row.names(m_bankdata),union(Train_Index,Val_Index))
+Train_Index <- sample(row.names(m_bankdata), .5*dim(m_bankdata)[1])#create train index
+Val_Index <- sample(setdiff(row.names(m_bankdata),Train_Index),.3*dim(m_bankdata)[1])#create validation index
+Test_Index =setdiff(row.names(m_bankdata),union(Train_Index,Val_Index))#create test index
 
+#load the data
 Train_Data <- m_bankdata[Train_Index,]
 Validation_Data <- m_bankdata[Val_Index,]
 Test_Data <- m_bankdata [Test_Index,]
 
+#normalize the quantitative data
 norm.values3 <- preProcess(m_bankdata[,columnsare], method=c("center", "scale"))
 train.norm.df3 = Train_Data
 val.norm.df3 = Validation_Data
@@ -162,10 +159,12 @@ train.norm.df3[, columnsare] <- predict(norm.values3, Train_Data[, columnsare])
 val.norm.df3[, columnsare] <- predict(norm.values3, Validation_Data[, columnsare])
 test.norm.df3[, columnsare] <- predict(norm.values3, Test_Data[, columnsare])
 
+#run knn for all 3
 knn.train <- knn(train=train.norm.df3[,-14],test=train.norm.df3[,-14],cl=train.norm.df3[,14], k=3, prob=TRUE)
 knn.val<- knn(train=train.norm.df3[,-14],test=val.norm.df3[,-14],cl=train.norm.df3[,14],k=3, prob=TRUE)
 knn.test<- knn(train=train.norm.df3[,-14],test=test.norm.df3[,-14],cl=train.norm.df3[,14],k=3, prob=TRUE)
 
+#display the confusion matrices
 confusionMatrix(knn.train,train.norm.df3[,14], positive="Yes")
 confusionMatrix(knn.val,val.norm.df3[,14], positive="Yes")
 confusionMatrix(knn.test,test.norm.df3[,14], positive="Yes")
