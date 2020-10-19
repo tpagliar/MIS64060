@@ -1,0 +1,137 @@
+---
+title: "Assignment_3-tpagliar"
+author: "Tim Pagliari tpagliar@kent.edu"
+date: "10/13/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+dir.create("images")
+```
+
+***
+# Assignment 3 - tpagliar, Naive Bayes Classification
+
+This code aims to solve the questions of Assignment 3 with Naive Bayes classification from the prompt below:
+
+Predicting flight delays can be useful to a variety of organizations. Here,
+we look at five predictors. The outcome of interest is whether or not the flight is delayed (delayed here means arrived more than 15 minutes late). Our data consist of all flights from the Washington, DC area into the New York City area during January 2004. A record is a particular flight. The percentage of delayed flights among these 2201 flights is 19.5%. The data were obtained from the Bureau of Transportation Statistics (available on the web at www.transtats.bts.gov). 
+
+The goal is to accurately predict whether or not a new flight (not in this dataset), will be delayed. The outcome variable is
+whether the flight was delayed, and thus it has two classes (1 = delayed and 0 = on time).
+
+First we will import our dataset.
+```{r}
+library(caret)
+library(ISLR)
+library(e1071)
+library(dplyr)
+library(plyr)
+library(randomForest)
+library(chron)
+library(tidyr)
+#Import the data
+FlightData <- read.csv("~/GIT/MIS64060-tpagliar/FlightDelays.csv", stringsAsFactors = TRUE)
+summary(FlightData)
+```
+We see our summarized data above.
+
+
+# Cleaning the data 
+
+In this section, we will clean and properly class our data. Additionally, we see that the data has CSR Time and Departure Time as integers, but out model will look at the hour in which the flight was scheduled to leave (in the event that the time of day has a strong impact) and at the amount of time the flight left early or late from its origin airport.
+
+```{r}
+#clean the data, turn char and integer fields into appropriate factor fields.
+FlightData$Flight.Status<-factor(FlightData$Flight.Status,levels=c("ontime","delayed"),labels=c("No","Yes"))
+FlightData$DAY_WEEK<- factor(FlightData$DAY_WEEK)
+FlightData$DAY_OF_MONTH <- factor(FlightData$DAY_OF_MONTH)
+FlightData$Weather <- factor(FlightData$Weather)
+FlightData$FL_NUM <-factor(FlightData$FL_NUM)
+
+#bin the scheduled depart time into intervals of 30 minutes.
+library(tidyr)
+#we'll make sure the incoming 24h time has leading zeros for the hours
+df.CRS_DEP_TIME <- as.character(FlightData$CRS_DEP_TIME)
+df.flightdata<-ldply(df.CRS_DEP_TIME, data.frame) #import the planned departure time with leading 0's into a dataframe df.flightdata
+df.CRS_DEP_TIME_split = separate(data=df.flightdata,col=1,into=c("Hours","Minutes"),sep=-2) #separate the first two digits into minutes, and the remaining into hours
+FlightData$CRS_DEP_HOUR <- (sapply(df.CRS_DEP_TIME_split$Hours, as.factor)) #Create a new column that bins all scheduled departure hours
+CRS_DEP_HOUR <- (sapply(df.CRS_DEP_TIME_split$Hours, as.numeric))
+CRS_DEP_MIN <- (sapply(df.CRS_DEP_TIME_split$Minutes, as.numeric))
+
+#now we do the same for the actual departure time
+#we'll make sure the military time has leading zeros for the hours
+df.DEP_TIME <- as.character(FlightData$DEP_TIME)
+df.flightdata<-ldply(df.DEP_TIME, data.frame) #import the planned departure time with leading 0's into a dataframe df.flightdata
+df.DEP_TIME_split = separate(data=df.flightdata,col=1,into=c("Hours","Minutes"),sep=-2) #separate the first two digits into minutes, and the remaining into hours
+DEP_HOUR <- (sapply(df.DEP_TIME_split$Hours, as.numeric))
+DEP_MIN <- (sapply(df.DEP_TIME_split$Minutes, as.numeric))
+
+###now we will find how far from the scheduled departure time, and bin them in intervals of 15 minutes from -60 to 60.
+DEP_COMBO = do.call(rbind, Map(data.frame,Hours=DEP_HOUR,Minutes=DEP_MIN))
+DEP_COMBO$TOTALMIN<- with(DEP_COMBO,(Hours*60)+Minutes)
+CRS_DEP_COMBO = do.call(rbind, Map(data.frame,Hours=CRS_DEP_HOUR,Minutes=CRS_DEP_MIN))
+CRS_DEP_COMBO$TOTALMIN<- with(CRS_DEP_COMBO,(Hours*60)+Minutes)
+#Now that we have the total minute shift from depature, we can sort out our bins of -60 to 60
+FlightData$DepartDifference <- (CRS_DEP_COMBO$TOTALMIN-DEP_COMBO$TOTALMIN)#calculate the total difference in minutes between scheduled and actual depart
+FlightData$DepartDifference <-as.numeric(FlightData$DepartDifference)
+FlightData$DepartDifference <- round_any(FlightData[ ,15] ,15, floor)#round down to nearest 15 for the total depart difference, eg: being delayed 6 minutes will round to 15 - leaving 15 minutes late or less. 
+FlightData$DepartDifference <-as.factor(FlightData$DepartDifference)#convert to factor
+
+
+#transfer only the relevant columns to our working dataset
+RelevantData <- select(FlightData,CARRIER,DEST,FL_NUM,ORIGIN,Weather,DAY_WEEK,DAY_OF_MONTH,TAIL_NUM,Flight.Status,CRS_DEP_HOUR,DepartDifference)
+summary(RelevantData)
+```
+
+# Dividing training and test data.
+Now divide data into training and test sets
+```{r}
+set.seed(351)
+#Divide data into test and train
+Index_Train<-createDataPartition(RelevantData$Flight.Status, p=0.6, list=FALSE)
+Train <-RelevantData[Index_Train,]
+Test  <-RelevantData[-Index_Train,]
+```
+# Running the model
+
+Now we'll run the Naive Bayes model to predict flight delay status.
+```{r}
+summary(Train)
+nb_model <- naiveBayes(Flight.Status~CARRIER+DEST+FL_NUM+ORIGIN+Weather+DAY_WEEK+DAY_OF_MONTH+TAIL_NUM+CRS_DEP_HOUR+DepartDifference,data=Train)
+```
+
+# Destination Airport Correlation to Delays
+The tables below shows the count and proportions of delays by origin airport.
+```{r}
+Delays.by.Airport <-factor(RelevantData$Flight.Status,label=c("| On Time","Delayed"))
+mytable<- table(RelevantData$ORIGIN,Delays.by.Airport)
+ftable(mytable)
+prop.table(mytable,margin=1)
+```
+
+## Test set with confusion matrix and ROC.
+Now we'll use the test set with our model.
+```{r}
+Predicted_Test_Labels <-predict(nb_model,Test)
+library("gmodels")
+CrossTable(x=Test$Flight.Status,y=Predicted_Test_Labels, prop.chisq = FALSE) 
+```
+We see that of the 880 flights, our model classified 56 false positives and 52 false negatives. This may be an issue as 12% of flights are misclassified, and only ~19% of flights are delayed, our margin of error would make this a difficult model to trust. However, the relatively low false negative rate might be seen as a positive
+
+Let's check the raw probabilities
+```{r}
+Predicted_Test_Labels <-predict(nb_model,Test, type = "raw")
+head(Predicted_Test_Labels)
+```
+
+# ROC Curves
+```{r}
+library(pROC)
+#summary(Predicted_Test_Labels)
+roc(Test$Flight.Status,Predicted_Test_Labels[ ,2])
+plot.roc(Test$Flight.Status,Predicted_Test_Labels[,2])
+```
+
+Above is the ROC Curve from our model. We see that it is fairly accurate but has some issues. Given more time or training data, I would try to reduce the false negatives as much as possible. 
