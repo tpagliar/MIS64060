@@ -1,0 +1,130 @@
+---
+title: "Assignment 4  - MIS64060"
+author: "Tim Pagliari tpagliar@kent.edu"
+date: "10/25/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+dir.create("images")
+options(scipen=999)
+library(dplyr)
+library(tidyverse)
+library(fastDummies)
+library(factoextra) # clustering algorithms & visualization
+library(ISLR)
+library(caret)
+```
+
+## Assignment details:
+The dataset on American College and University Rankings contains information on 1302 American colleges and
+universities offering an undergraduate program. For each university, there are 17 measurements, including
+continuous measurements (such as tuition and graduation rate) and categorical measurements (such as location by
+state and whether it is a private or public school). Note that many records are missing some measurements.
+<ul>
+<li> Remove all records with missing measurements from the dataset.</li>
+<li> For all the continuous measurements, run K-Means clustering. Make sure to normalize the
+measurements. How many clusters seem reasonable for describing these data? What was
+your optimal K?</li>
+<li> Compare the summary statistics for each cluster and describe each cluster in this context
+(e.g., “Universities with high tuition, low acceptance rate...”).</li>
+<li> Use the categorical measurements that were not used in the analysis (State and
+Private/Public) to characterize the different clusters. Is there any relationship between the
+clusters and the categorical information?</li>
+<li> What other external information can explain the contents of some or all of these clusters?</li>
+<li> Consider Tufts University, which is missing some information. Compute the Euclidean
+distance of this record from each of the clusters that you found above (using only the
+measurements that you have). Which cluster is it closest to? Impute the missing values for
+Tufts by taking the average of the cluster on those measurements.</li>
+</ul>
+
+## Import and tidy the data
+
+```{r}
+UniversitiesFull <- read.csv("/Users/tpagliar/GIT/MIS64060-tpagliar/Universities.csv", stringsAsFactors = TRUE)
+UniversitiesFull <- dummy_columns(UniversitiesFull, select_columns = 'Public..1...Private..2.')
+colnames(UniversitiesFull) <- c("Name","State","PublicPrivate","Applied","Accepted","Enrolled","Top10","Top25","FullTimeUG","PartTimeUG","InStateTuition","OutStateTuition","Room","Board","Fees","EstBookCost","EstPersCost","FacWPHD","StudFacRatio","GradRate","Public","Private")
+Universities <- UniversitiesFull
+summary(Universities)
+Universities$PublicPrivate <- as.factor(Universities$PublicPrivate)
+Universities$AcceptRate<-((Universities$Accepted/Universities$Applied)*100) #I'll use these to simplify the contribution to the selectivity and yield of each school.
+Universities$EnrolledRate<-((Universities$Enrolled/Universities$Accepted)*100)#I'll use these to simplify the contribution to the selectivity and yield of each school. 
+Universities$AcceptRate<-((Universities$Accepted/Universities$Applied)*100)
+Universities$EnrolledRate<-((Universities$Enrolled/Universities$Accepted)*100)
+colMeans(is.na(Universities)*100) #we see there are many incomplete records, we'll remove them from our dataset
+Universities <- Universities[complete.cases(Universities),] #Include only complete data
+summary(Universities) #we see that some schools have data that is a heavy outlier, ex: a 118% graduation rate or 103% faculty with PhDs. We'll filter these 'erroneous' rows below:
+Universities <- filter(Universities, (GradRate <= 100) & (FacWPHD <= 100))#we see that some schools have data that is a heavy outlier, ex: a 118% graduation rate or 103% faculty with PhDs. 
+summary(Universities)
+
+```
+
+## Normalizing Data
+```{r}
+#columnsare <- c(3,)
+ScaledValues <- scale(Universities[,4:20], center=TRUE,scale=TRUE)
+UniversitiesScaled <- Universities
+UniversitiesScaled[,4:20]<- ScaledValues
+summary(UniversitiesScaled)
+```
+
+## Clustering
+We'll start with 5 clusters as a base, then will do some analysis to determine the optimal number of centers.
+
+```{r}
+k5 <- kmeans(ScaledValues, centers = 5, nstart = 25) # k = 5, number of restarts = 25
+k5$centers # output the centers
+k5$size # Number of schools in each cluster
+k5$cluster[120] # Identify the cluster of the 120th observation as an example
+fviz_cluster(k5, data = ScaledValues) # Visualize the output
+```
+
+## Optimal Clustering
+```{r}
+set.seed(321)
+fviz_nbclust(ScaledValues, kmeans, method = "wss")
+#It looks like 3 or 4 is the optimal n-cluster here....
+fviz_nbclust(ScaledValues, kmeans, method = "silhouette")
+#We'll run kmeans with 3 centers as recommended by the silhouette
+k3 <- kmeans(ScaledValues, centers = 3, nstart = 25) # k = 4, number of restarts = 25
+k3$centers # output the centers
+k3$size # Number of schools in each cluster
+k3$cluster[120] # Identify the cluster of the 120th observation as an example
+kmeansplot = fviz_cluster(k3, data = ScaledValues) # Visualize the output
+kmeansplot
+```
+
+<ul>
+<li>Cluster 1 has low enrollment and lower student profile, medium student:faculty ratio and few faculty with PhDs </li>
+<li>Cluster 2 has high performing students, high selectivity and a relatively high cost. It also has a low student:faculty ratio and many PhD faculty. Most importantly, it has a very high Graduation Rate.</li>
+<li>Cluster 3 has high enrollment, low selectivity, low tuition but high costs, large class sizes and medium performance by its students. </li>
+</ul>
+
+```{r}
+#now lets check the categorical variables
+Universities$ClusterNum <- as.factor(k3$cluster)
+with(Universities, table(ClusterNum,PublicPrivate))
+with(Universities, table(ClusterNum,State))
+```
+We can see that group 2 - the high performers - are almost entirely private (98%); and that group 3 - the large schools - are 89% public. A correlation by state is not obvious.
+
+## Tufts University
+```{r}
+UniversitiesTufts<-Universities
+UniversitiesTufts[nrow(UniversitiesTufts)+1,]<-UniversitiesFull[which(UniversitiesFull$Name == "Tufts University"),]
+#we'll normalize it as before
+
+ScaledValuesT <- scale(UniversitiesTufts[,4:20], center=TRUE,scale=TRUE)
+UniversitiesScaledT <- UniversitiesTufts
+UniversitiesScaledT[,4:20]<- ScaledValuesT
+ScaledValuesT[which(UniversitiesTufts$Name == "Tufts University"),]
+clustercenters<-k3$centers
+distance1 <- rbind(ScaledValuesT[which(UniversitiesTufts$Name == "Tufts University"),],clustercenters[1,])
+distance2 <- rbind(ScaledValuesT[which(UniversitiesTufts$Name == "Tufts University"),],k3$centers[2,])
+distance3 <- rbind(ScaledValuesT[which(UniversitiesTufts$Name == "Tufts University"),],k3$centers[3,])
+dist(distance1,method="euclidean") #distance from Tufts to Cluster 1 center
+dist(distance2,method="euclidean") #distance from Tufts to Cluster 2 center
+dist(distance3,method="euclidean") #distance from Tufts to Cluster 3 center
+```
+Tufts is closest (at at 2.73 units) to <b>Cluster 2 , the high performer cluster</b>. Tufts is missing their Part-Time UG, so we can impute this from the cluster 2 average (-0.3144979).
