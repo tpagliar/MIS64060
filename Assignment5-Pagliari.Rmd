@@ -1,0 +1,87 @@
+---
+title: "Assignment 5 - Clustering"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+  html_notebook:
+    highlight: textmate
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+dir.create("images")
+```
+
+```{r, echo=FALSE}
+library(dplyr)
+library(class)
+library(stats)
+library(cluster)
+library(NbClust)
+library(clValid)
+library(FNN)
+```
+
+
+First, we'll clean and scale our data
+```{r}
+CerealData <- read.csv("/Users/tpagliar/Downloads/Cereals.csv")
+CerealData <- na.omit(CerealData) #remove missing data
+CerealDataScaled <- scale(CerealData[,4:16]) #Scale the numeric data
+head(CerealDataScaled)
+```
+
+Next we perform some observations using agnes:
+```{r}
+hc_single <- agnes(CerealDataScaled, method = "single")
+hc_complete <- agnes(CerealDataScaled, method = "complete")
+hc_average <- agnes(CerealDataScaled, method = "average")
+hc_ward <- agnes(CerealDataScaled, method = "ward")
+
+print(hc_single$ac)
+print(hc_complete$ac)
+print(hc_average$ac)
+print(hc_ward$ac)
+```
+We see that <b>Ward's method has the best structure at above .90</b>, we'll use his method moving forward.
+
+### Creating the dendrogram and clusters
+```{r, echo=FALSE}
+pltree(hc_ward, cex= 0.6, hang=-1, main="Dendrogram of cereal clusters")
+rect.hclust(hc_ward, k = 13, border = 1:8)
+#NbClust(CerealDataScaled, distance="euclidean", method="ward.D2")
+hc13<-cutree(hc_ward, k=13)
+```
+The algorithm has sorted our cereals, based on the level of plateaus and the output of the NbClust analysis, I would choose 13 clusters. Being able to choose the ideal K by observing the dendrogram is a benefit of hierarchical clustering over kmeans. 
+
+Now we'll try to check stability by partitionning our data, clustering half and then assigning clusters to the other half. Then, we'll compare these cluster counts to the results when the data was clustered in whole.
+```{r, figures-side, fig.show="hold", out.width="50%"}
+A_Index <- sample(row.names(CerealDataScaled), .5*dim(CerealDataScaled)[1])
+B_Index <- setdiff(row.names(CerealDataScaled), A_Index)
+Adata <- CerealDataScaled[A_Index,]
+Bdata <- CerealDataScaled[B_Index,]
+A.agnes<-agnes(Adata,method="ward")
+A13<-cutree(A.agnes, k=13) ##put A into 13 clusters
+
+##get centroids
+clust.centroid = function(i, dat, A13) {
+    ind = (A13 == i)
+    colMeans(dat[ind,])
+    }
+centroids <- sapply(unique(A13), clust.centroid, CerealDataScaled, A13)
+B13 <- get.knnx(centroids,Bdata,1)$nn.index[,1]
+Total <-append(A13,B13)
+hist(hc13,breaks=13,main="#Cereal in Clusters from AGNES")
+hist(Total,breaks=13,main="#Cereal in Clusters when partitioned")
+```
+We see that the clustering looks quite different when we use only half of the data at a time.
+
+### The elementary public schools would like to choose a set of cereals to include in their daily cafeterias. Every day a different cereal is offered, but all cereals should support a healthy diet. For this goal, you are requested to find a cluster of “healthy cereals.” Should the data be normalized? If not, how should they be used in the cluster analysis?
+
+If we are to select a cluster of 'healthy cereals', we should take the school's definition of 'healthy' (high protein, high fiber, high vitamin, low fat, etc) and weight the scale of these variables to allow a more specific differentiation by those areas.
+
+### How do you compare hierarchical clustering and k-means? What are they main advantages of hierarchical clustering compared to k-means?
+
+Both forms of clustering help to categorize data, but kmeans requires more knowledge of the dataset to select an appropriate number of clusters before performing the analysis while hierarchical clustering can be on a sliding scale of the number of clusters based on divisions visible on the dendrogram. Hierarchical clustering is also more computationally resource heavy, but is more flexible in its use. Some advantages of hierarchical clustering are that it does not rely on random starting centroids, and can be initiated as as divisive or agglomerative (as opposed to a random cluster start by kmeans).  
